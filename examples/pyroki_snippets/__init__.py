@@ -12,3 +12,6 @@ from ._solve_ik_with_multiple_targets import (
 from ._solve_ik_with_multi_targets_with_collision import (
     solve_ik_with_multiple_targets_with_collision as solve_ik_with_multiple_targets_with_collision,
 )
+from ._solve_ik_with_base_with_multi_targets import (
+    solve_ik_with_base_with_multiple_targets as solve_ik_with_base_with_multiple_targets,
+)
