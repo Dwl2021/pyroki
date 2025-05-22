@@ -15,3 +15,6 @@ from ._solve_ik_with_multi_targets_with_collision import (
 from ._solve_ik_with_base_with_multi_targets import (
     solve_ik_with_base_with_multiple_targets as solve_ik_with_base_with_multiple_targets,
 )
+from ._online_planning_with_multi_targets import (
+    solve_online_planning_with_multiple_targets as solve_online_planning_with_multiple_targets,
+)
