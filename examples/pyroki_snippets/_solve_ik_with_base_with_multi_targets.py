@@ -20,8 +20,8 @@ def solve_ik_with_base_with_multiple_targets(
     target_wxyz: onp.ndarray,
     fix_base_position: tuple[bool, bool, bool],
     fix_base_orientation: tuple[bool, bool, bool],
-    prev_pos: onp.ndarray,
-    prev_wxyz: onp.ndarray,
+    base_pos: onp.ndarray,
+    base_wxyz: onp.ndarray,
     prev_cfg: onp.ndarray,
 ) -> tuple[onp.ndarray, onp.ndarray, onp.ndarray]:
     """
@@ -34,7 +34,7 @@ def solve_ik_with_base_with_multiple_targets(
         wxyz: onp.ndarray. Shape: (4,).
         fix_base_position: Whether to fix the base position (x, y, z).
         fix_base_orientation: Whether to fix the base orientation (w_x, w_y, w_z).
-        prev_pos, prev_wxyz, prev_cfg: Previous base position, orientation, and joint configuration, for smooth motion.
+        base_pos, base_wxyz, prev_cfg: Previous base position, orientation, and joint configuration, for smooth motion.
 
     Returns:
         base_pos: onp.ndarray. Shape: (3,).
@@ -43,7 +43,7 @@ def solve_ik_with_base_with_multiple_targets(
     """
     num_targets = len(target_link_name)
     assert target_position.shape == (num_targets, 3) and target_wxyz.shape == (num_targets, 4)
-    assert prev_pos.shape == (3,) and prev_wxyz.shape == (4,)
+    assert base_pos.shape == (3,) and base_wxyz.shape == (4,)
     assert prev_cfg.shape == (robot.joints.num_actuated_joints,)
     target_link_indices = [robot.links.names.index(name) for name in target_link_name]
 
@@ -53,15 +53,15 @@ def solve_ik_with_base_with_multiple_targets(
         )
         for target_wxyz, target_position in zip(target_wxyz, target_position)
     ]
-    base_pose, cfg = _solve_ik_jax(
+    base_pose, cfg = _solve_ik_with_base_with_multiple_targets_jax(
         robot,
         coll,
         world_coll_list,
         T_world_targets,
         jnp.array(target_link_indices),
         jnp.array(fix_base_position + fix_base_orientation),
-        jnp.array(prev_pos),
-        jnp.array(prev_wxyz),
+        jnp.array(base_pos),
+        jnp.array(base_wxyz),
         jnp.array(prev_cfg),
     )
     assert cfg.shape == (robot.joints.num_actuated_joints,)
@@ -74,15 +74,15 @@ def solve_ik_with_base_with_multiple_targets(
 
 
 @jdc.jit
-def _solve_ik_jax(
+def _solve_ik_with_base_with_multiple_targets_jax(
     robot: pk.Robot,
     coll: pk.collision.RobotCollision,
     world_coll_list: Sequence[pk.collision.CollGeom],
     T_world_targets: list[jaxlie.SE3],
     target_joint_indices: jnp.ndarray,
     fix_base: jnp.ndarray,
-    prev_pos: jnp.ndarray,
-    prev_wxyz: jnp.ndarray,
+    base_pos: jnp.ndarray,
+    base_wxyz: jnp.ndarray,
     prev_cfg: jnp.ndarray,
 ) -> tuple[jaxlie.SE3, jax.Array]:
     joint_var = robot.joint_var_cls(0)
@@ -95,8 +95,8 @@ def _solve_ik_jax(
     class ConstrainedSE3Var(
         jaxls.Var[jaxlie.SE3],
         default_factory=lambda: jaxlie.SE3.from_rotation_and_translation(
-            jaxlie.SO3(prev_wxyz),
-            prev_pos,
+            jaxlie.SO3(base_wxyz),
+            base_pos,
         ),
         tangent_dim=jaxlie.SE3.tangent_dim,
         retract_fn=retract_fn,

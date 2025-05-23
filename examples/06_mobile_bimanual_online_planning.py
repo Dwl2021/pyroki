@@ -19,8 +19,8 @@ def main():
     """Main function for online planning with collision."""
     # urdf = load_robot_description("panda_description")
     # target_link_name = "panda_hand"
-    urdf = load_robot_description("yumi_description")
-    target_link_names = ["yumi_link_7_r", "yumi_link_7_l"]
+    urdf = load_robot_description("yumi_description_mobile")
+    target_link_names = ["yumi_link_7_l", "yumi_link_7_r"]
     robot = pk.Robot.from_urdf(urdf)
 
     robot_coll = RobotCollision.from_urdf(urdf)
@@ -42,10 +42,10 @@ def main():
 
     # Create interactive controller for IK target.
     ik_target_handle_0 = server.scene.add_transform_controls(
-        "/ik_target_0", scale=0.2, position=(0.3, 0.0, 0.5), wxyz=(0, 0, 1, 0)
+        "/ik_target_0", scale=0.2, position=(2, -0.15, 0.5), wxyz=(0, 0, 1, 0)
     )
     ik_target_handle_1 = server.scene.add_transform_controls(
-        "/ik_target_1", scale=0.2, position=(0.3, 0.0, 0.5), wxyz=(0, 0, 1, 0)
+        "/ik_target_1", scale=0.2, position=(2, -0.45, 0.5), wxyz=(0, 0, 1, 0)
     )
 
     # Create interactive controller and mesh for the sphere obstacle.
@@ -60,6 +60,24 @@ def main():
         batched_positions=np.zeros((25, 3)),
         batched_wxyzs=np.array([[1.0, 0.0, 0.0, 0.0]] * 25),
     )
+    
+    wall_height = 0.4
+    wall_width = 0.05
+    wall_length = 0.4
+    wall_intervals = np.arange(start=0.3, stop=wall_length + 0.3, step=0.05)
+    translation = np.concatenate(
+        [
+            wall_intervals.reshape(-1, 1),
+            np.full((wall_intervals.shape[0], 1), 0.0),
+            np.full((wall_intervals.shape[0], 1), wall_height / 2),
+        ],
+        axis=1,
+    )
+    wall_coll = pk.collision.Capsule.from_radius_height(
+        position=translation,
+        radius=np.full((translation.shape[0], 1), wall_width / 2),
+        height=np.full((translation.shape[0], 1), wall_height),
+    )
 
     timing_handle = server.gui.add_number("Elapsed (ms)", 0.001, disabled=True)
 
@@ -67,6 +85,7 @@ def main():
     sol_traj = np.array(
         robot.joint_var_cls.default_factory()[None].repeat(len_traj, axis=0)
     )
+    flag = False
     while True:
         start_time = time.time()
 
@@ -74,7 +93,7 @@ def main():
             wxyz=np.array(sphere_handle.wxyz),
             position=np.array(sphere_handle.position),
         )
-        world_coll_list = [plane_coll, sphere_coll_world_current]
+        world_coll_list = [plane_coll, sphere_coll_world_current, wall_coll]
         sol_traj, sol_pos, sol_wxyz, base_pos, base_wxyz = pks.solve_online_planning_with_base_with_multiple_targets(
             robot=robot,
             robot_coll=robot_coll,
@@ -91,6 +110,9 @@ def main():
             prev_pos=base_frame.position,
             prev_wxyz=base_frame.wxyz
         )
+        if not flag:
+            input("Press Enter to continue...")
+            flag = True
 
         # Update timing handle.
         timing_handle.value = (
@@ -103,6 +125,7 @@ def main():
         )  # The first step of the online trajectory solution.
         base_frame.position = np.array(base_pos[0])
         base_frame.wxyz = np.array(base_wxyz[0])
+        print(base_frame.position)
 
         # Update the planned trajectory visualization.
         if hasattr(target_frame_handle, "batched_positions"):

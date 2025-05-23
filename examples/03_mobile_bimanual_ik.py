@@ -75,8 +75,8 @@ def main():
             target_wxyz=np.array([ik_target_0.wxyz, ik_target_1.wxyz]),
             fix_base_position=(False, False, True),  # Only free along xy plane.
             fix_base_orientation=(True, True, False),  # Free along z-axis rotation.
-            prev_pos=base_frame.position,
-            prev_wxyz=base_frame.wxyz,
+            base_pos=base_frame.position,
+            base_wxyz=base_frame.wxyz,
             prev_cfg=cfg,
         )
 

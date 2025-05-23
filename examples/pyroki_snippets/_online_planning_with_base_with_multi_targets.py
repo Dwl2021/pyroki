@@ -157,7 +157,7 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
     ):  
         arm_smoothness = (vals[pose_var].inverse() @ vals[pose_var_prev]).log().flatten()
         base_smoothness = (vals[base_pose_var].inverse() @ vals[base_pose_var_prev]).log().flatten()
-        return jnp.concatenate([5.0 * arm_smoothness, base_smoothness])
+        return jnp.concatenate([50 * arm_smoothness, 50 * base_smoothness])
 
     @jaxls.Cost.create_factory(name="SE3PoseMatchCost")
     def pose_match_cost(
@@ -188,7 +188,7 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
         error_1 = (se3_1 @ target_poses[1]).log()
         
         total_error = jnp.concatenate([error_0, error_1])
-        weights = jnp.array([50.0] * 3 + [20.0] * 3)
+        weights = jnp.array([1000.0] * 3 + [1000.0] * 3)
         weights_full = jnp.tile(weights, 2) 
         
         return total_error * weights_full
@@ -198,7 +198,17 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
         vals: jaxls.VarValues,
         joint_var: jaxls.Var[jnp.ndarray],
     ):
-        return (vals[joint_var] - start_cfg).flatten() * 100.0
+        return (vals[joint_var] - start_cfg).flatten() * 1000.0
+    
+    @jaxls.Cost.create_factory(name="MatchBaseStartPoseCost")
+    def match_base_start_pose_cost(
+        vals: jaxls.VarValues,
+        base_pose_var: ConstrainedSE3Var,
+    ):
+        start_cfg_base = jaxlie.SE3.from_rotation_and_translation(
+            jaxlie.SO3(prev_wxyz), prev_pos
+        )
+        return (vals[base_pose_var].inverse() @ start_cfg_base).log().flatten() * 1000.0
     
     @jaxls.Cost.create_factory(name="BaseVelLimitCost")
     def base_vel_limit_cost(
@@ -209,7 +219,7 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
         dt: float,
     ):
         base_vel = (vals[base_pose_var].translation() - vals[base_pose_var_prev].translation()) / dt
-        residual = jnp.maximum(0.0, jnp.abs(base_vel) - jnp.array([0.03, 0.03, 0.0]))
+        residual = jnp.maximum(0.0, jnp.abs(base_vel) - jnp.array([0.5, 0.5, 0.0]))
         return residual.flatten() * weight
 
     # Add pose costs.
@@ -231,6 +241,7 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
 
     # Need to constrain the start joint cfg.
     factors.append(match_start_pose_cost(robot.joint_var_cls(0)))
+    factors.append(match_base_start_pose_cost(ConstrainedSE3Var(0)))
 
     # Add joint costs.
     factors.extend(
@@ -242,13 +253,13 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
             pk.costs.smoothness_cost(
                 traj_var_prev,
                 traj_var_next,
-                weight=10.0,
+                weight=100.0,
             ),
             pk.costs.limit_velocity_cost(
                 jax.tree.map(lambda x: x[None], robot),
                 traj_var_prev,
                 traj_var_next,
-                weight=10.0,
+                weight=100.0,
                 dt=dt,
             ),
             pk.costs.limit_cost(
@@ -259,14 +270,14 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
             base_vel_limit_cost(
                 base_pose_var=base_pose_var_next,
                 base_pose_var_prev=base_pose_var_prev,
-                weight=10.0,
+                weight=100.0,
                 dt=dt,
             ),
-            pk.costs.rest_cost(
-                traj_var,
-                jnp.array(traj_var.default_factory())[None],
-                weight=0.01,
-            ),
+            # pk.costs.rest_cost(
+            #     traj_var,
+            #     jnp.array(traj_var.default_factory())[None],
+            #     weight=0.01,
+            # ),
             # pk.costs.manipulability_cost(
             #     jax.tree.map(lambda x: x[None], robot),
             #     traj_var,
@@ -290,7 +301,7 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
                 traj_var,
                 jax.tree.map(lambda x: x[None], obs),
                 weight=20.0,
-                margin=0.1,
+                margin=0.01,
             )
             for obs in world_coll
         ]
@@ -304,7 +315,7 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
             initial_vals=jaxls.VarValues.make(
                 (traj_var.with_value(prev_sols), pose_var.with_value(init_pose_vals), base_pose_var.with_value(jaxlie.SE3.identity((num_targets,))))
             ),
-            termination=jaxls.TerminationConfig(max_iterations=20),
+            termination=jaxls.TerminationConfig(max_iterations=50),
         )
     )
     pose_traj = solution[pose_var]

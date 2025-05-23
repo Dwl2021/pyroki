@@ -21,3 +21,6 @@ from ._online_planning_with_multi_targets import (
 from ._online_planning_with_base_with_multi_targets import (
     solve_online_planning_with_base_with_multiple_targets as solve_online_planning_with_base_with_multiple_targets,
 )
+from ._trajopt_with_base_with_multi_targets import (
+    solve_trajopt_with_base_with_multiple_targets as solve_trajopt_with_base_with_multiple_targets,
+)
