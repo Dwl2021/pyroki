@@ -11,6 +11,9 @@ import viser
 from pyroki.collision import HalfSpace, RobotCollision, Sphere
 from robot_descriptions.loaders.yourdfpy import load_robot_description
 from viser.extras import ViserUrdf
+import yourdfpy
+import jaxlie
+
 
 import pyroki_snippets as pks
 
@@ -19,8 +22,9 @@ def main():
     """Main function for online planning with collision."""
     # urdf = load_robot_description("panda_description")
     # target_link_name = "panda_hand"
-    urdf = load_robot_description("yumi_description_mobile")
-    target_link_names = ["yumi_link_7_l", "yumi_link_7_r"]
+    # urdf = load_robot_description("yumi_description_mobile")
+    urdf = yourdfpy.URDF.load("../rm65/robot_description.urdf")
+    target_link_names = ["left_Link6", "right_Link6"]
     robot = pk.Robot.from_urdf(urdf)
 
     robot_coll = RobotCollision.from_urdf(urdf)
@@ -111,6 +115,8 @@ def main():
             prev_wxyz=base_frame.wxyz
         )
         if not flag:
+            curr_time = time.time()
+            print(f"Time taken to warm up: {curr_time - start_time}")
             input("Press Enter to continue...")
             flag = True
 
@@ -119,22 +125,54 @@ def main():
             0.99 * timing_handle.value + 0.01 * (time.time() - start_time) * 1000
         )
 
-        # Update visualizer.
-        urdf_vis.update_cfg(
-            sol_traj[0]
-        )  # The first step of the online trajectory solution.
-        base_frame.position = np.array(base_pos[0])
-        base_frame.wxyz = np.array(base_wxyz[0])
-        print(base_frame.position)
+        for i in range(3):  # Execute 3 steps at once
+            urdf_vis.update_cfg(sol_traj[i])
+            base_frame.position = np.array(base_pos[i])
+            base_frame.wxyz = np.array(base_wxyz[i])
+            print(f"Step {i} base position:", base_frame.position)
 
         # Update the planned trajectory visualization.
         if hasattr(target_frame_handle, "batched_positions"):
-            target_frame_handle.batched_positions = np.array(sol_pos)  # type: ignore[attr-defined]
-            target_frame_handle.batched_wxyzs = np.array(sol_wxyz)  # type: ignore[attr-defined]
+            # Transform positions and orientations through base frame
+            transformed_positions = []
+            transformed_wxyzs = []
+            for pos, wxyz in zip(sol_pos, sol_wxyz):
+                # Create SE3 transform for current pose
+                current_pose = jaxlie.SE3.from_rotation_and_translation(
+                    jaxlie.SO3(wxyz), pos
+                )
+                # Create SE3 transform for base frame
+                base_pose = jaxlie.SE3.from_rotation_and_translation(
+                    jaxlie.SO3(base_frame.wxyz), base_frame.position
+                )
+                # Transform through base frame
+                transformed_pose = base_pose @ current_pose
+                transformed_positions.append(transformed_pose.translation())
+                transformed_wxyzs.append(transformed_pose.rotation().wxyz)
+            
+            target_frame_handle.batched_positions = np.array(transformed_positions)  # type: ignore[attr-defined]
+            target_frame_handle.batched_wxyzs = np.array(transformed_wxyzs)  # type: ignore[attr-defined]
         else:
             # This is an older version of Viser.
-            target_frame_handle.positions_batched = np.array(sol_pos)  # type: ignore[attr-defined]
-            target_frame_handle.wxyzs_batched = np.array(sol_wxyz)  # type: ignore[attr-defined]
+            # Transform positions and orientations through base frame
+            transformed_positions = []
+            transformed_wxyzs = []
+            for pos, wxyz in zip(sol_pos, sol_wxyz):
+                # Create SE3 transform for current pose
+                current_pose = jaxlie.SE3.from_rotation_and_translation(
+                    jaxlie.SO3(wxyz), pos
+                )
+                # Create SE3 transform for base frame
+                base_pose = jaxlie.SE3.from_rotation_and_translation(
+                    jaxlie.SO3(base_frame.wxyz), base_frame.position
+                )
+                # Transform through base frame
+                transformed_pose = base_pose @ current_pose
+                transformed_positions.append(transformed_pose.translation())
+                transformed_wxyzs.append(transformed_pose.rotation().wxyz)
+            
+            target_frame_handle.positions_batched = np.array(transformed_positions)  # type: ignore[attr-defined]
+            target_frame_handle.wxyzs_batched = np.array(transformed_wxyzs)  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":

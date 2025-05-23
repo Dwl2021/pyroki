@@ -188,8 +188,20 @@ def _solve_online_planning_with_base_with_multiple_targets_jax(
         error_1 = (se3_1 @ target_poses[1]).log()
         
         total_error = jnp.concatenate([error_0, error_1])
-        weights = jnp.array([1000.0] * 3 + [1000.0] * 3)
-        weights_full = jnp.tile(weights, 2) 
+        
+        # Calculate distances to targets
+        dist_0 = jnp.linalg.norm(current_translations[0] - target_poses[0].translation())
+        dist_1 = jnp.linalg.norm(current_translations[1] - target_poses[1].translation())
+        
+        # Dynamic weights based on distance
+        # When far (>0.5m): weight=1000, when close (<0.1m): weight=5000
+        weight_0 = jnp.clip(1000.0 + 9000.0 * (1.0 - dist_0/0.25), 1000.0, 10000.0)
+        weight_1 = jnp.clip(1000.0 + 9000.0 * (1.0 - dist_1/0.25), 1000.0, 10000.0)
+        
+        # Create weights for both position and rotation
+        weights_0 = jnp.array([weight_0] * 3 + [weight_0] * 3)
+        weights_1 = jnp.array([weight_1] * 3 + [weight_1] * 3)
+        weights_full = jnp.concatenate([weights_0, weights_1])
         
         return total_error * weights_full
 
